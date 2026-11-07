@@ -23,11 +23,12 @@
 <label>Host<input id="oscHost" value="127.0.0.1"></label>
 <label>Port<input id="oscPort" type="number" min="1" max="65535" value="6000"></label>
 <label>Address<input id="oscAddress" value="/controls/meta/hue"></label>
+<label>Device hostname<input id="deviceHost" value="huecontroller.local"></label>
 <div id="status"></div>
 <script>
 const hue = document.querySelector('#hue'), value = document.querySelector('#value'), status = document.querySelector('#status');
 const deadband = document.querySelector('#deadband'), hold = document.querySelector('#hold'), speed = document.querySelector('#speed');
-const oscHost = document.querySelector('#oscHost'), oscPort = document.querySelector('#oscPort'), oscAddress = document.querySelector('#oscAddress');
+const oscHost = document.querySelector('#oscHost'), oscPort = document.querySelector('#oscPort'), oscAddress = document.querySelector('#oscAddress'), deviceHost = document.querySelector('#deviceHost');
 const wifiSsid = document.querySelector('#wifiSsid'), wifiSecret = document.querySelector('#wifiSecret');
 hue.oninput = () => value.textContent = Number(hue.value).toFixed(3);
 async function call(url, options) { const r = await fetch(url, options); const x = await r.json(); if (!r.ok) throw Error(x.error); return x; }
@@ -47,8 +48,10 @@ function scheduleHue() {
 }
 hue.oninput = () => { value.textContent = Number(hue.value).toFixed(3); scheduleHue(); };
 document.querySelector('#send').onclick = sendHue;
-document.querySelector('#save').onclick = async () => { try { const x = await call('/api/config', {method:'PUT', headers:{'content-type':'application/json'}, body:JSON.stringify({deadband:Number(deadband.value), hold_timeout_ms:Number(hold.value), pullaway_speed_mm_s:Number(speed.value), osc_host:oscHost.value, osc_port:Number(oscPort.value), osc_address:oscAddress.value})}); status.textContent = JSON.stringify(x, null, 2); } catch(e) { status.textContent = e; } };
+async function loadConfig() { const x = await call('/api/config'); deadband.value = x.deadband; hold.value = x.hold_timeout_ms; speed.value = x.pullaway_speed_mm_s; oscHost.value = x.osc_host; oscPort.value = x.osc_port; oscAddress.value = x.osc_address; deviceHost.value = x.device_host || ''; }
+document.querySelector('#save').onclick = async () => { try { const x = await call('/api/config', {method:'PUT', headers:{'content-type':'application/json'}, body:JSON.stringify({deadband:Number(deadband.value), hold_timeout_ms:Number(hold.value), pullaway_speed_mm_s:Number(speed.value), osc_host:oscHost.value, osc_port:Number(oscPort.value), osc_address:oscAddress.value, device_host:deviceHost.value})}); status.textContent = JSON.stringify(x, null, 2); } catch(e) { status.textContent = e; } };
 async function loadWifi() { const x = await call('/api/wifi'); wifiSsid.value = x.ssid; wifiSecret.value = ''; }
 document.querySelector('#saveWifi').onclick = async () => { try { const body = {ssid:wifiSsid.value}; if (wifiSecret.value) body.secret = wifiSecret.value; const x = await call('/api/wifi', {method:'PUT', headers:{'content-type':'application/json'}, body:JSON.stringify(body)}); wifiSecret.value = ''; status.textContent = `Saved shared Wi-Fi: ${x.ssid} (secret set: ${x.secret_set})`; } catch(e) { status.textContent = e; } };
 loadWifi().catch(e => status.textContent = e);
+loadConfig().catch(e => status.textContent = e);
 </script>
