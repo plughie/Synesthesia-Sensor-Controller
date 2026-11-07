@@ -7,7 +7,7 @@
 #include <ESPmDNS.h>
 
 #ifndef DEVICE_HOSTNAME
-#define DEVICE_HOSTNAME "huecontroller"
+#define DEVICE_HOSTNAME "crowdcontroller"
 #endif
 
 static constexpr int STATUS_LED_GPIO = 48;

@@ -20,6 +20,21 @@ from protocol import ControllerConfig, hue_from_request, hue_message, osc_float_
 
 ROOT = Path(__file__).parent
 
+CONTROLLER_PROFILES = {
+    "hue": {
+        "name": "Hue Controller",
+        "hostname": "huecontroller.local",
+        "expected_devices": ["esp32-s3-hue-test"],
+        "description": "Rotary hue control and lock switch.",
+    },
+    "crowd": {
+        "name": "Crowd Controller",
+        "hostname": "crowdcontroller.local",
+        "expected_devices": ["esp32-s3-crowd-prep"],
+        "description": "Crowd-distance threshold controller; sensors may be unassigned.",
+    },
+}
+
 
 class Transport:
     def __init__(self, serial_path: Optional[str], osc_host: Optional[str], osc_port: int, osc_address: str):
@@ -129,6 +144,8 @@ class State:
         self.wifi_status = {"state": "not_configured", "ssid": "", "ip": "0.0.0.0"}
         self.device_host = "huecontroller.local"
         self.device_osc_host = transport.osc_target[0] if transport.osc_target else ""
+        self.controller_id = "hue"
+        self.device_identity = {"device": "", "sensors": "", "gpio48": ""}
 
     def apply_hue(self, raw: float, normalized: float):
         with self.lock:
@@ -167,10 +184,12 @@ def make_handler(state: State):
             with state.lock:
                 if self.path == "/api/config":
                     result = asdict(state.config)
-                    result.update({"osc_host": state.transport.osc_target[0], "osc_port": state.transport.osc_target[1], "osc_address": state.transport.osc_address, "device_host": state.device_host, "device_osc_host": state.device_osc_host})
+                    result.update({"osc_host": state.transport.osc_target[0], "osc_port": state.transport.osc_target[1], "osc_address": state.transport.osc_address, "device_host": state.device_host, "device_osc_host": state.device_osc_host, "serial": state.transport.serial_path, "controller_id": state.controller_id, "controller": CONTROLLER_PROFILES[state.controller_id], "device_identity": state.device_identity})
                     return self._json(200, result)
                 if self.path == "/api/status":
-                    return self._json(200, {"raw": state.raw, "normalized": state.normalized, "serial": state.transport.serial_path, "osc": state.transport.osc_target, "osc_address": state.transport.osc_address, "device_host": state.device_host, "device_osc_host": state.device_osc_host, "wifi": state.wifi_status})
+                    return self._json(200, {"raw": state.raw, "normalized": state.normalized, "serial": state.transport.serial_path, "osc": state.transport.osc_target, "osc_address": state.transport.osc_address, "device_host": state.device_host, "device_osc_host": state.device_osc_host, "controller_id": state.controller_id, "controller": CONTROLLER_PROFILES[state.controller_id], "device_identity": state.device_identity, "wifi": state.wifi_status})
+                if self.path == "/api/controllers":
+                    return self._json(200, {"controllers": CONTROLLER_PROFILES, "selected": state.controller_id, "device_identity": state.device_identity})
                 if self.path == "/api/wifi":
                     return self._json(200, {"ssid": state.wifi["ssid"], "secret_set": bool(state.wifi["secret"])})
             self._json(404, {"error": "not found"})
@@ -209,8 +228,30 @@ def make_handler(state: State):
                 body = self._body()
                 with state.lock:
                     state.config = state.config.update(body)
+                    if "controller_id" not in body and "device_host" in body:
+                        requested_host = str(body["device_host"]).strip()
+                        for candidate_id, profile in CONTROLLER_PROFILES.items():
+                            if requested_host == profile["hostname"]:
+                                state.controller_id = candidate_id
+                                break
+                    if "controller_id" in body:
+                        controller_id = str(body["controller_id"]).strip()
+                        if controller_id not in CONTROLLER_PROFILES:
+                            raise ValueError("unknown controller_id")
+                        profile = CONTROLLER_PROFILES[controller_id]
+                        requested_host = str(body.get("device_host", profile["hostname"])).strip()
+                        if requested_host != profile["hostname"]:
+                            raise ValueError(f"{profile['name']} must use {profile['hostname']}")
+                        actual_device = state.device_identity.get("device", "")
+                        if actual_device and actual_device not in profile["expected_devices"]:
+                            raise ValueError(f"connected device identifies as {actual_device}, not {profile['name']}")
+                        state.controller_id = controller_id
+                        state.device_host = profile["hostname"]
                     if "device_host" in body:
-                        state.device_host = str(body["device_host"]).strip()
+                        requested_host = str(body["device_host"]).strip()
+                        if requested_host != CONTROLLER_PROFILES[state.controller_id]["hostname"]:
+                            raise ValueError(f"{CONTROLLER_PROFILES[state.controller_id]['name']} must use {CONTROLLER_PROFILES[state.controller_id]['hostname']}")
+                        state.device_host = requested_host
                     if "device_osc_host" in body:
                         state.device_osc_host = str(body["device_osc_host"]).strip()
                     if any(key in body for key in ("osc_host", "osc_port", "osc_address", "device_osc_host")):
@@ -219,7 +260,7 @@ def make_handler(state: State):
                         state.transport.send_serial((json.dumps({"type": "osc", "host": state.device_osc_host, "port": state.transport.osc_target[1], "address": state.transport.osc_address}, separators=(",", ":")) + "\n").encode("utf-8"))
                         state.transport.send_network_osc_config(state.device_host, state.device_osc_host, state.transport.osc_target[1], state.transport.osc_address)
                     result = asdict(state.config)
-                    result.update({"osc_host": state.transport.osc_target[0], "osc_port": state.transport.osc_target[1], "osc_address": state.transport.osc_address, "device_host": state.device_host, "device_osc_host": state.device_osc_host})
+                    result.update({"osc_host": state.transport.osc_target[0], "osc_port": state.transport.osc_target[1], "osc_address": state.transport.osc_address, "device_host": state.device_host, "device_osc_host": state.device_osc_host, "serial": state.transport.serial_path, "controller_id": state.controller_id, "controller": CONTROLLER_PROFILES[state.controller_id], "device_identity": state.device_identity})
                     return self._json(200, result)
             except (ValueError, TypeError) as exc:
                 return self._json(400, {"error": str(exc)})
@@ -247,6 +288,15 @@ def main():
     state = State(transport)
 
     def handle_device_message(message):
+        if message.get("type") == "hello":
+            with state.lock:
+                state.device_identity = {key: str(message.get(key, "")) for key in ("device", "sensors", "gpio48")}
+                for controller_id, profile in CONTROLLER_PROFILES.items():
+                    if state.device_identity["device"] in profile["expected_devices"]:
+                        state.controller_id = controller_id
+                        state.device_host = profile["hostname"]
+                        break
+            return
         if message.get("type") == "wifi_status":
             state.wifi_status = {"state": message.get("state", "unknown"), "ssid": message.get("ssid", ""), "ip": message.get("ip", "0.0.0.0")}
             return

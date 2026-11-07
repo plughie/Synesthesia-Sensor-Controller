@@ -12,6 +12,7 @@ ESP32-S3 controller firmware and a small Python host bridge for live OSC control
 - Wi-Fi configuration without committing credentials.
 - Bonjour/mDNS HTTP device name support.
 - Serial and direct Wi-Fi OSC paths.
+- Explicit Hue and Crowd controller profiles with hostname and firmware-identity checks.
 
 ## Repository layout
 
@@ -33,6 +34,13 @@ python3 api.py --dry-run
 ~~~
 
 Open http://127.0.0.1:8765/ for the configurator.
+
+The configurator distinguishes the two boards before saving configuration:
+
+- Hue Controller — `huecontroller.local`, firmware identity `esp32-s3-hue-test`
+- Crowd Controller — `crowdcontroller.local`, firmware identity `esp32-s3-crowd-prep`
+
+`GET /api/controllers` reports the available profiles and connected serial identity. Saving a profile rejects a known serial device that does not match the selected controller.
 
 For a connected board, replace dry-run with a platform-specific serial port:
 

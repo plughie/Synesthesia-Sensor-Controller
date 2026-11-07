@@ -4,12 +4,18 @@
 <style>
   body { font: 16px system-ui, sans-serif; max-width: 560px; margin: 3rem auto; padding: 0 1rem; }
   label { display:block; margin-top:1rem; } input { width:100%; box-sizing:border-box; padding:.5rem; }
+  select { width:100%; box-sizing:border-box; padding:.5rem; }
+  .identity { margin:1rem 0; padding:.8rem; background:#f1f5f9; border-radius:.4rem; white-space:pre-wrap; }
+  .warning { color:#9a3412; }
   button { margin-top:1.2rem; padding:.6rem 1rem; } #status { margin-top:1rem; font-family:monospace; white-space:pre-wrap; }
 </style>
 <h1>Synesthesia Hue Controller</h1>
 <label>Hue (raw 0.0–2.0)<input id="hue" type="range" min="0" max="2" step="0.001" value="0"></label>
 <output id="value">0.000</output>
 <button id="send">Send value</button>
+<h2>Controller identity</h2>
+<label>Controller<select id="controller"></select></label>
+<div id="identity" class="identity">Loading controller identity…</div>
 <h2>Gesture configuration</h2>
 <label>Deadband<input id="deadband" type="number" min="0" max="1" step="0.001" value="0.02"></label>
 <label>Hold timeout (ms)<input id="hold" type="number" min="0" value="400"></label>
@@ -29,7 +35,7 @@
 <script>
 const hue = document.querySelector('#hue'), value = document.querySelector('#value'), status = document.querySelector('#status');
 const deadband = document.querySelector('#deadband'), hold = document.querySelector('#hold'), speed = document.querySelector('#speed');
-const oscHost = document.querySelector('#oscHost'), oscPort = document.querySelector('#oscPort'), oscAddress = document.querySelector('#oscAddress'), deviceOscHost = document.querySelector('#deviceOscHost'), deviceHost = document.querySelector('#deviceHost');
+const oscHost = document.querySelector('#oscHost'), oscPort = document.querySelector('#oscPort'), oscAddress = document.querySelector('#oscAddress'), deviceOscHost = document.querySelector('#deviceOscHost'), deviceHost = document.querySelector('#deviceHost'), controller = document.querySelector('#controller'), identity = document.querySelector('#identity');
 const wifiSsid = document.querySelector('#wifiSsid'), wifiSecret = document.querySelector('#wifiSecret');
 hue.oninput = () => value.textContent = Number(hue.value).toFixed(3);
 async function call(url, options) { const r = await fetch(url, options); const x = await r.json(); if (!r.ok) throw Error(x.error); return x; }
@@ -49,10 +55,13 @@ function scheduleHue() {
 }
 hue.oninput = () => { value.textContent = Number(hue.value).toFixed(3); scheduleHue(); };
 document.querySelector('#send').onclick = sendHue;
-async function loadConfig() { const x = await call('/api/config'); deadband.value = x.deadband; hold.value = x.hold_timeout_ms; speed.value = x.pullaway_speed_mm_s; oscHost.value = x.osc_host; oscPort.value = x.osc_port; oscAddress.value = x.osc_address; deviceOscHost.value = x.device_osc_host || ''; deviceHost.value = x.device_host || ''; }
-document.querySelector('#save').onclick = async () => { try { const x = await call('/api/config', {method:'PUT', headers:{'content-type':'application/json'}, body:JSON.stringify({deadband:Number(deadband.value), hold_timeout_ms:Number(hold.value), pullaway_speed_mm_s:Number(speed.value), osc_host:oscHost.value, osc_port:Number(oscPort.value), osc_address:oscAddress.value, device_osc_host:deviceOscHost.value, device_host:deviceHost.value})}); status.textContent = JSON.stringify(x, null, 2); } catch(e) { status.textContent = e; } };
+function renderIdentity(x) { const p = x.controller || {}; const d = x.device_identity || {}; const match = !d.device || (p.expected_devices || []).includes(d.device); identity.className = `identity${match ? '' : ' warning'}`; identity.textContent = `${p.name || 'Unknown'}\nExpected hostname: ${p.hostname || '—'}\nConnected serial: ${x.serial || 'not exposed by this endpoint'}\nFirmware identity: ${d.device || 'waiting for serial hello'}${d.sensors ? `\nSensors: ${d.sensors}` : ''}${match ? '' : '\nWARNING: connected firmware does not match this controller profile.'}`; }
+async function loadControllers() { const x = await call('/api/controllers'); controller.innerHTML = Object.entries(x.controllers).map(([id,p]) => `<option value="${id}">${p.name} — ${p.hostname}</option>`).join(''); controller.value = x.selected; }
+controller.onchange = async () => { const profiles = await call('/api/controllers'); const next = profiles.controllers[controller.value]; deviceHost.value = next.hostname; identity.textContent = `${next.name}\nExpected hostname: ${next.hostname}\nSelect Save configuration to apply this controller.`; };
+async function loadConfig() { const x = await call('/api/config'); deadband.value = x.deadband; hold.value = x.hold_timeout_ms; speed.value = x.pullaway_speed_mm_s; oscHost.value = x.osc_host; oscPort.value = x.osc_port; oscAddress.value = x.osc_address; deviceOscHost.value = x.device_osc_host || ''; deviceHost.value = x.device_host || ''; controller.value = x.controller_id || 'hue'; renderIdentity({...x, serial: x.serial}); }
+document.querySelector('#save').onclick = async () => { try { const x = await call('/api/config', {method:'PUT', headers:{'content-type':'application/json'}, body:JSON.stringify({controller_id:controller.value, deadband:Number(deadband.value), hold_timeout_ms:Number(hold.value), pullaway_speed_mm_s:Number(speed.value), osc_host:oscHost.value, osc_port:Number(oscPort.value), osc_address:oscAddress.value, device_osc_host:deviceOscHost.value, device_host:deviceHost.value})}); renderIdentity({...x, serial: x.serial}); status.textContent = `${x.controller.name} selected. Configuration saved.`; } catch(e) { status.textContent = e; } };
 async function loadWifi() { const x = await call('/api/wifi'); wifiSsid.value = x.ssid; wifiSecret.value = ''; }
 document.querySelector('#saveWifi').onclick = async () => { try { const body = {ssid:wifiSsid.value}; if (wifiSecret.value) body.secret = wifiSecret.value; const x = await call('/api/wifi', {method:'PUT', headers:{'content-type':'application/json'}, body:JSON.stringify(body)}); wifiSecret.value = ''; status.textContent = `Saved shared Wi-Fi: ${x.ssid} (secret set: ${x.secret_set})`; } catch(e) { status.textContent = e; } };
 loadWifi().catch(e => status.textContent = e);
-loadConfig().catch(e => status.textContent = e);
+loadControllers().then(loadConfig).catch(e => status.textContent = e);
 </script>
