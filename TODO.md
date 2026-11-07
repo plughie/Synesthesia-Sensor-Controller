@@ -2,6 +2,7 @@
 
 ## Crowd sensor firmware
 
+- [x] Flash a stable sensor-independent preparation image to the fresh crowd-controller board.
 - [ ] Confirm VL53L1X breakout wiring and I2C address.
 - [ ] Confirm LD2410C UART pins, voltage, and protocol settings.
 - [ ] Create a separate PlatformIO environment with hostname crowdcontroller.

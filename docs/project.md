@@ -156,6 +156,8 @@ Do not flash unrelated firmware to another connected board. Confirm the serial t
 
 ## Crowd sensor plan
 
+The fresh crowd-controller board currently runs the preparation image in `firmware/crowd-controller/`. It advertises `crowdcontroller.local` after Wi-Fi is configured, uses the rotary encoder to select a 500–4000 mm threshold in 50 mm steps, and leaves VL53L1X/LD2410C inputs unassigned until wiring is confirmed.
+
 Planned sensors:
 
 - VL53L1X upward-facing time-of-flight distance sensor;

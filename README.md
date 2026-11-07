@@ -17,6 +17,7 @@ ESP32-S3 controller firmware and a small Python host bridge for live OSC control
 
 - host/synesthesia_controller/ — Python API, configurator, OSC encoder, and tests.
 - firmware/hue-controller/ — PlatformIO ESP32-S3 firmware.
+- firmware/crowd-controller/ — sensor-ready preparation firmware with no sensor pins assigned yet.
 - docs/project.md — architecture, wiring, API, flashing, and crowd-sensor plan.
 - TODO.md — implementation roadmap.
 
