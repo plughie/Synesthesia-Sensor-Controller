@@ -128,6 +128,7 @@ class State:
         self.wifi = {"ssid": "", "secret": ""}
         self.wifi_status = {"state": "not_configured", "ssid": "", "ip": "0.0.0.0"}
         self.device_host = "huecontroller.local"
+        self.device_osc_host = transport.osc_target[0] if transport.osc_target else ""
 
     def apply_hue(self, raw: float, normalized: float):
         with self.lock:
@@ -166,10 +167,10 @@ def make_handler(state: State):
             with state.lock:
                 if self.path == "/api/config":
                     result = asdict(state.config)
-                    result.update({"osc_host": state.transport.osc_target[0], "osc_port": state.transport.osc_target[1], "osc_address": state.transport.osc_address})
+                    result.update({"osc_host": state.transport.osc_target[0], "osc_port": state.transport.osc_target[1], "osc_address": state.transport.osc_address, "device_host": state.device_host, "device_osc_host": state.device_osc_host})
                     return self._json(200, result)
                 if self.path == "/api/status":
-                    return self._json(200, {"raw": state.raw, "normalized": state.normalized, "serial": state.transport.serial_path, "osc": state.transport.osc_target, "osc_address": state.transport.osc_address, "device_host": state.device_host, "wifi": state.wifi_status})
+                    return self._json(200, {"raw": state.raw, "normalized": state.normalized, "serial": state.transport.serial_path, "osc": state.transport.osc_target, "osc_address": state.transport.osc_address, "device_host": state.device_host, "device_osc_host": state.device_osc_host, "wifi": state.wifi_status})
                 if self.path == "/api/wifi":
                     return self._json(200, {"ssid": state.wifi["ssid"], "secret_set": bool(state.wifi["secret"])})
             self._json(404, {"error": "not found"})
@@ -210,13 +211,15 @@ def make_handler(state: State):
                     state.config = state.config.update(body)
                     if "device_host" in body:
                         state.device_host = str(body["device_host"]).strip()
-                    if any(key in body for key in ("osc_host", "osc_port", "osc_address")):
+                    if "device_osc_host" in body:
+                        state.device_osc_host = str(body["device_osc_host"]).strip()
+                    if any(key in body for key in ("osc_host", "osc_port", "osc_address", "device_osc_host")):
                         current_host, current_port = state.transport.osc_target
                         state.transport.set_osc(body.get("osc_host", current_host), body.get("osc_port", current_port), body.get("osc_address", state.transport.osc_address))
-                        state.transport.send_serial((json.dumps({"type": "osc", "host": state.transport.osc_target[0], "port": state.transport.osc_target[1], "address": state.transport.osc_address}, separators=(",", ":")) + "\n").encode("utf-8"))
-                        state.transport.send_network_osc_config(state.device_host, state.transport.osc_target[0], state.transport.osc_target[1], state.transport.osc_address)
+                        state.transport.send_serial((json.dumps({"type": "osc", "host": state.device_osc_host, "port": state.transport.osc_target[1], "address": state.transport.osc_address}, separators=(",", ":")) + "\n").encode("utf-8"))
+                        state.transport.send_network_osc_config(state.device_host, state.device_osc_host, state.transport.osc_target[1], state.transport.osc_address)
                     result = asdict(state.config)
-                    result.update({"osc_host": state.transport.osc_target[0], "osc_port": state.transport.osc_target[1], "osc_address": state.transport.osc_address, "device_host": state.device_host})
+                    result.update({"osc_host": state.transport.osc_target[0], "osc_port": state.transport.osc_target[1], "osc_address": state.transport.osc_address, "device_host": state.device_host, "device_osc_host": state.device_osc_host})
                     return self._json(200, result)
             except (ValueError, TypeError) as exc:
                 return self._json(400, {"error": str(exc)})

@@ -42,12 +42,12 @@ python3 api.py --serial <hue-controller-serial-port>
 
 ## Configure OSC
 
-The Mac's LAN IP should be used as the ESP32 OSC destination. Replace the example address and IP for the local installation:
+The host API and ESP32 have separate OSC destinations. The Mac API can send to Synesthesia on `127.0.0.1`, while the ESP32 must send to the Mac's LAN IP. Replace the example values for the local installation:
 
 ~~~sh
 curl -X PUT http://127.0.0.1:8765/api/config \
   -H 'content-type: application/json' \
-  -d '{"device_host":"huecontroller.local","osc_host":"192.168.1.100","osc_port":6000,"osc_address":"/controls/meta/hue"}'
+  -d '{"device_host":"huecontroller.local","osc_host":"127.0.0.1","device_osc_host":"192.168.1.100","osc_port":6000,"osc_address":"/controls/meta/hue"}'
 ~~~
 
 Scene-specific addresses can be changed without reflashing:

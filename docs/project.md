@@ -22,7 +22,7 @@ There are two ESP32-S3 boards. Never interchange their firmware targets.
 
 The hue controller is an ESP32-S3 with 4 MB flash and 2 MB PSRAM. It advertises the configurable Bonjour/mDNS hostname `huecontroller.local`. Network credentials and addresses are deployment-specific and are not committed here.
 
-The ESP32 destination should normally be the Mac's LAN IP for reliable OSC delivery; mDNS hostname resolution from the ESP32 is not assumed.
+The host API and ESP32 have separate OSC destinations. The host API can send to Synesthesia on `127.0.0.1`, while the ESP32 should use the Mac's LAN IP for reliable Wi-Fi OSC delivery. mDNS hostname resolution from the ESP32 is not assumed.
 
 ## Hue controller wiring
 
