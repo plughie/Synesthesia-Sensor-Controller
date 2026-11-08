@@ -38,6 +38,8 @@ static int encoder_accum = 0;
 static bool locked = false;
 static bool last_button = true;
 static unsigned long last_button_ms = 0;
+static unsigned long last_indicator_ms = 0;
+static bool indicator_output_on = true;
 
 static bool has(const char *line, const char *needle) { return strstr(line, needle) != nullptr; }
 
@@ -173,11 +175,22 @@ static float crowd_normalized() {
   return (crowd_distance_mm - 500.0f) / 3500.0f;
 }
 
-static void set_indicator(float distance_mm) {
-  const float normalized = crowd_normalized();
+static void set_indicator(float distance_mm, bool enabled) {
+  const float normalized = (distance_mm - 500.0f) / 3500.0f;
   const uint8_t red = (uint8_t)(255.0f * (1.0f - normalized));
   const uint8_t green = (uint8_t)(255.0f * normalized);
-  neopixelWrite(STATUS_LED_GPIO, red, green, 0);
+  neopixelWrite(STATUS_LED_GPIO, enabled ? red : 0, enabled ? green : 0, 0);
+}
+
+static void refresh_indicator() {
+  const unsigned long now = millis();
+  if (locked) {
+    indicator_output_on = true;
+  } else if (now - last_indicator_ms >= 500) {
+    last_indicator_ms = now;
+    indicator_output_on = !indicator_output_on;
+  }
+  set_indicator(crowd_distance_mm, indicator_output_on);
 }
 
 static void emit_crowd_config() {
@@ -185,7 +198,7 @@ static void emit_crowd_config() {
   if (crowd_distance_mm > 4000) crowd_distance_mm = 4000;
   const float normalized = crowd_normalized();
   Serial.printf("{\"type\":\"crowd_config\",\"distance_mm\":%.1f,\"normalized\":%.6f}\n", crowd_distance_mm, normalized);
-  set_indicator(crowd_distance_mm);
+  set_indicator(crowd_distance_mm, indicator_output_on);
   send_osc(normalized);
 }
 
@@ -211,6 +224,9 @@ static void poll_button() {
     last_button = pressed;
     if (pressed) {
       locked = !locked;
+      indicator_output_on = true;
+      last_indicator_ms = millis();
+      set_indicator(crowd_distance_mm, indicator_output_on);
       send_lock();
     }
   }
@@ -277,6 +293,7 @@ void loop() {
   }
   poll_encoder();
   poll_button();
+  refresh_indicator();
   while (Serial.available()) {
     const char c = (char)Serial.read();
     if (c == '\n' || c == '\r') {
