@@ -11,7 +11,7 @@ This image prepares the fresh ESP32-S3 for the VL53L1X and LD2410C sensors witho
 - Default OSC address: `/controls/global/slider/1`
 - Sensor inputs: intentionally unassigned
 
-The encoder currently emits a normalized distance-configuration value over OSC and serial JSON. The pushbutton locks/unlocks the threshold. The onboard RGB LED uses `brightness,red,green,blue` status values: unlocked with presence `255,255,0,255` (flashing magenta), unlocked without presence `255,0,0,255` (flashing blue), and locked `25,255,0,0` (steady dim red). Sensor sampling will be added after the LD2410C UART wiring is confirmed.
+The encoder emits a normalized distance-configuration value over OSC and serial JSON and sends the corresponding maximum-distance gate configuration to the LD2410C over UART. The ESP32 UART uses GPIO9 as RX and GPIO8 as TX. The pushbutton locks/unlocks the threshold. The onboard RGB LED uses `brightness,red,green,blue` status values: unlocked with presence `255,255,0,255` (flashing magenta), unlocked without presence `255,0,0,255` (flashing blue), and locked `25,255,0,0` (steady dim red).
 
 Build:
 

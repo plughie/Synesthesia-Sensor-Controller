@@ -173,7 +173,7 @@ Crowd-controller wiring plan:
 | Presence test LED | GPIO12 through a series resistor (optional) |
 | Status LED | GPIO48 |
 
-GPIO10 and GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic.
+GPIO10 and GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic. The ESP32 uses GPIO9 as UART RX from the LD2410C TX pin and GPIO8 as UART TX to the LD2410C RX pin.
 The onboard RGB LED uses the following status scheme. Values are expressed as `brightness,red,green,blue`:
 
 - unlocked with presence: `255,255,0,255` (full magenta, flashing);
@@ -186,7 +186,7 @@ The LD2410C can report target presence and distance gates/energies, but it does 
 
 Planned crowd behavior:
 
-1. Rotary encoder adjusts the LD2410C detection distance/threshold.
+1. Rotary encoder adjusts the LD2410C maximum detection distance by sending its distance-gate configuration over UART.
 2. Pushbutton can lock the configured distance during a performance.
 3. Sensor events are converted to a configurable OSC value.
 4. The OSC address can be changed per scene without reflashing.

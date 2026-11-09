@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <HardwareSerial.h>
 #include <math.h>
 #include <Preferences.h>
 #include <WiFi.h>
@@ -16,6 +17,9 @@ static constexpr int ENCODER_B_GPIO = 5;
 static constexpr int ENCODER_SW_GPIO = 6;
 static constexpr int RADAR_OUT_GPIO = 7;
 static constexpr int PRESENCE_LED_GPIO = 12;
+static constexpr int RADAR_RX_GPIO = 9;
+static constexpr int RADAR_TX_GPIO = 8;
+static constexpr uint32_t RADAR_BAUD = 256000;
 static constexpr unsigned long TEST_PERIOD_MS = 1000;
 static char line_buffer[256];
 static size_t line_length = 0;
@@ -31,6 +35,7 @@ static String osc_host = "192.168.1.100";
 static int osc_port = 6000;
 static String osc_address = "/controls/global/slider/1";
 static WiFiUDP osc_udp;
+static HardwareSerial radar_serial(2);
 static IPAddress osc_ip;
 static WebServer web_server(80);
 static bool web_started = false;
@@ -109,6 +114,42 @@ static void send_osc_value(const String &address, float value) {
 }
 
 static void send_osc(float normalized) { send_osc_value(osc_address, normalized); }
+
+static void radar_command(const uint8_t *data, size_t length) {
+  radar_serial.write(data, length);
+  radar_serial.flush();
+  delay(30);
+  while (radar_serial.available()) radar_serial.read();
+}
+
+static uint8_t radar_gate_for_distance(float distance_mm) {
+  const int gate = (int)((distance_mm + 375.0f) / 750.0f);
+  return (uint8_t)constrain(gate, 2, 8);
+}
+
+static void apply_radar_range() {
+  const uint8_t gate = radar_gate_for_distance(crowd_distance_mm);
+  const uint8_t enter_config[] = {
+    0xFD, 0xFC, 0xFB, 0xFA, 0x04, 0x00,
+    0xFF, 0x00, 0x01, 0x00, 0x04, 0x03, 0x02, 0x01
+  };
+  const uint8_t set_range[] = {
+    0xFD, 0xFC, 0xFB, 0xFA, 0x14, 0x00,
+    0x60, 0x00,
+    0x00, 0x00, gate, 0x00, 0x00, 0x00,
+    0x01, 0x00, gate, 0x00, 0x00, 0x00,
+    0x02, 0x00, 0x05, 0x00, 0x00, 0x00,
+    0x04, 0x03, 0x02, 0x01
+  };
+  const uint8_t exit_config[] = {
+    0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00,
+    0xFE, 0x00, 0x04, 0x03, 0x02, 0x01
+  };
+  radar_command(enter_config, sizeof(enter_config));
+  radar_command(set_range, sizeof(set_range));
+  radar_command(exit_config, sizeof(exit_config));
+  Serial.printf("{\"type\":\"radar_range\",\"distance_mm\":%.1f,\"gate\":%u}\n", crowd_distance_mm, gate);
+}
 
 static void send_lock() {
   send_osc_value(osc_address + "/lock", locked ? 1.0f : 0.0f);
@@ -214,6 +255,7 @@ static void emit_crowd_config() {
   if (crowd_distance_mm > 4000) crowd_distance_mm = 4000;
   const float normalized = crowd_normalized();
   Serial.printf("{\"type\":\"crowd_config\",\"distance_mm\":%.1f,\"normalized\":%.6f}\n", crowd_distance_mm, normalized);
+  apply_radar_range();
   refresh_indicator();
   send_osc(normalized);
 }
@@ -291,10 +333,13 @@ void setup() {
   pinMode(ENCODER_B_GPIO, INPUT_PULLUP);
   pinMode(ENCODER_SW_GPIO, INPUT_PULLUP);
   pinMode(RADAR_OUT_GPIO, INPUT_PULLDOWN);
+  radar_serial.begin(RADAR_BAUD, SERIAL_8N1, RADAR_RX_GPIO, RADAR_TX_GPIO);
   pinMode(PRESENCE_LED_GPIO, OUTPUT);
   digitalWrite(PRESENCE_LED_GPIO, LOW);
   encoder_state = (digitalRead(ENCODER_A_GPIO) << 1) | digitalRead(ENCODER_B_GPIO);
   neopixelWrite(STATUS_LED_GPIO, 0, 0, 8);
+  delay(100);
+  apply_radar_range();
   Serial.begin(115200);
   preferences.begin("hue", false);
   wifi_ssid = preferences.getString("ssid", "");
