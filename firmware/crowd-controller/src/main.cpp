@@ -276,7 +276,7 @@ void setup() {
   pinMode(ENCODER_A_GPIO, INPUT_PULLUP);
   pinMode(ENCODER_B_GPIO, INPUT_PULLUP);
   pinMode(ENCODER_SW_GPIO, INPUT_PULLUP);
-  pinMode(RADAR_OUT_GPIO, INPUT);
+  pinMode(RADAR_OUT_GPIO, INPUT_PULLDOWN);
   pinMode(PRESENCE_LED_GPIO, OUTPUT);
   digitalWrite(PRESENCE_LED_GPIO, LOW);
   encoder_state = (digitalRead(ENCODER_A_GPIO) << 1) | digitalRead(ENCODER_B_GPIO);
