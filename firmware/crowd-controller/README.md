@@ -7,6 +7,7 @@ This image prepares the fresh ESP32-S3 for the VL53L1X and LD2410C sensors witho
 - Pushbutton: GPIO6 to GND
 - Onboard RGB LED: GPIO48
 - Detection-distance range: 500–4000 mm
+- Startup range sent to the LD2410C: 500 mm
 - Encoder step: 50 mm
 - Default OSC address: `/controls/global/slider/1`
 - Sensor inputs: intentionally unassigned

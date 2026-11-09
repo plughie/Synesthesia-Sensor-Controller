@@ -24,7 +24,7 @@ static constexpr uint32_t RADAR_BAUD = 256000;
 static constexpr unsigned long TEST_PERIOD_MS = 1000;
 static char line_buffer[256];
 static size_t line_length = 0;
-static float crowd_distance_mm = 1000.0f;
+static float crowd_distance_mm = 500.0f;
 static bool test_enabled = false;
 static unsigned long last_test_ms = 0;
 static int hold_timeout_ms = 400;
