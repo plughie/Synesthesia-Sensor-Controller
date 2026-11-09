@@ -182,20 +182,20 @@ The onboard RGB LED uses the following status scheme. Values are expressed as `b
 
 The optional GPIO12 LED mirrors the presence signal for bench testing.
 
-The LD2410C can report target presence and distance gates/energies, but it does not provide lateral X/Y position of the nearest target. X/Y control would require a different sensor such as an LD2450/LD2461 or multiple sensors. The project currently accepts the no-X/Y design.
+The LD2410C reports target presence and per-distance-gate movement energy over UART, but it does not provide lateral X/Y position of the nearest target. The firmware combines the two strongest movement-energy gates into a smoothed `activity` float for OSC. X/Y control would require a different sensor such as an LD2450/LD2461 or multiple sensors. The project currently accepts the no-X/Y design.
 
 Current crowd behavior:
 
 1. Rotary encoder adjusts the LD2410C maximum detection distance by sending its distance-gate configuration over UART.
 2. Pushbutton can lock the configured distance during a performance.
-3. Sensor presence is exposed through `/api/status` and the optional GPIO12 test LED.
+3. Sensor presence and smoothed two-gate activity are exposed through `/api/status`; activity is sent as the configured OSC float.
 4. The OSC address can be changed per scene without reflashing.
 5. The crowd device advertises as `crowdcontroller.local`.
 
 Not yet complete:
 
 - validate the range-gate mapping against the physical venue and sensor installation;
-- decide whether crowd detection should emit binary presence or a smoothed normalized value to Synesthesia;
+- validate the two-gate activity smoothing against different crowd conditions;
 - test scene changes and long-running Wi-Fi behavior with sensors attached.
 
 See [`docs/wiring-and-bom.md`](wiring-and-bom.md) for the complete wiring table and bill of materials.

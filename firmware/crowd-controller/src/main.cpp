@@ -25,6 +25,7 @@ static constexpr unsigned long TEST_PERIOD_MS = 1000;
 static char line_buffer[256];
 static size_t line_length = 0;
 static float crowd_distance_mm = 500.0f;
+static float smoothed_activity = 0.0f;
 static bool test_enabled = false;
 static unsigned long last_test_ms = 0;
 static int hold_timeout_ms = 400;
@@ -49,6 +50,9 @@ static unsigned long last_button_ms = 0;
 static bool last_presence = false;
 static unsigned long last_indicator_ms = 0;
 static bool indicator_output_on = true;
+static unsigned long last_activity_osc_ms = 0;
+static uint8_t radar_frame[64];
+static size_t radar_frame_length = 0;
 
 static bool has(const char *line, const char *needle) { return strstr(line, needle) != nullptr; }
 
@@ -146,10 +150,67 @@ static void apply_radar_range() {
     0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00,
     0xFE, 0x00, 0x04, 0x03, 0x02, 0x01
   };
+  const uint8_t enable_engineering[] = {
+    0xFD, 0xFC, 0xFB, 0xFA, 0x02, 0x00,
+    0x62, 0x00, 0x04, 0x03, 0x02, 0x01
+  };
   radar_command(enter_config, sizeof(enter_config));
   radar_command(set_range, sizeof(set_range));
+  radar_command(enable_engineering, sizeof(enable_engineering));
   radar_command(exit_config, sizeof(exit_config));
   Serial.printf("{\"type\":\"radar_range\",\"distance_mm\":%.1f,\"gate\":%u}\n", crowd_distance_mm, gate);
+}
+
+static void update_activity(const uint8_t *frame) {
+  const uint8_t max_gate = min((uint8_t)8, frame[18]);
+  uint8_t strongest = 0;
+  uint8_t second_strongest = 0;
+  for (uint8_t gate = 0; gate <= max_gate; ++gate) {
+    const uint8_t energy = frame[19 + gate];
+    if (energy >= strongest) {
+      second_strongest = strongest;
+      strongest = energy;
+    } else if (energy > second_strongest) {
+      second_strongest = energy;
+    }
+  }
+  const float target = ((float)strongest + (float)second_strongest) / 200.0f;
+  const float smoothing = target > smoothed_activity ? 0.25f : 0.08f;
+  smoothed_activity += smoothing * (target - smoothed_activity);
+  if (smoothed_activity < 0.001f) smoothed_activity = 0.0f;
+  if (millis() - last_activity_osc_ms >= 50) {
+    last_activity_osc_ms = millis();
+    send_osc(smoothed_activity);
+  }
+}
+
+static void poll_radar_data() {
+  while (radar_serial.available()) {
+    const uint8_t byte = (uint8_t)radar_serial.read();
+    if (radar_frame_length == 0 && byte != 0xF4) continue;
+    if (radar_frame_length >= sizeof(radar_frame)) {
+      radar_frame_length = 0;
+      continue;
+    }
+    radar_frame[radar_frame_length++] = byte;
+    if (radar_frame_length == 4 && (radar_frame[1] != 0xF3 || radar_frame[2] != 0xF2 || radar_frame[3] != 0xF1)) {
+      radar_frame_length = 0;
+      continue;
+    }
+    if (radar_frame_length < 6) continue;
+    const size_t expected = 6 + radar_frame[4] + (radar_frame[5] << 8) + 4;
+    if (expected > sizeof(radar_frame) || expected < 10) {
+      radar_frame_length = 0;
+      continue;
+    }
+    if (radar_frame_length < expected) continue;
+    if (radar_frame[expected - 4] == 0xF8 && radar_frame[expected - 3] == 0xF7 &&
+        radar_frame[expected - 2] == 0xF6 && radar_frame[expected - 1] == 0xF5 &&
+        radar_frame[6] == 0x01 && radar_frame[7] == 0xAA) {
+      update_activity(radar_frame);
+    }
+    radar_frame_length = 0;
+  }
 }
 
 static void send_lock() {
@@ -175,7 +236,7 @@ static void handle_osc_http() {
 }
 
 static void handle_status_http() {
-  String body = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"ssid\":\"" + wifi_ssid + "\",\"osc_address\":\"" + osc_address + "\",\"distance_mm\":" + String(crowd_distance_mm, 1) + ",\"presence\":" + (last_presence ? "true" : "false") + "}";
+  String body = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"ssid\":\"" + wifi_ssid + "\",\"osc_address\":\"" + osc_address + "\",\"distance_mm\":" + String(crowd_distance_mm, 1) + ",\"presence\":" + (last_presence ? "true" : "false") + ",\"activity\":" + String(smoothed_activity, 4) + "}";
   web_server.send(200, "application/json", body);
 }
 
@@ -258,7 +319,6 @@ static void emit_crowd_config() {
   Serial.printf("{\"type\":\"crowd_config\",\"distance_mm\":%.1f,\"normalized\":%.6f}\n", crowd_distance_mm, normalized);
   apply_radar_range();
   refresh_indicator();
-  send_osc(normalized);
 }
 
 static void poll_encoder() {
@@ -369,6 +429,7 @@ void loop() {
   poll_encoder();
   poll_button();
   poll_presence();
+  poll_radar_data();
   refresh_indicator();
   while (Serial.available()) {
     const char c = (char)Serial.read();

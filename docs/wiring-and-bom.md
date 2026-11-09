@@ -36,7 +36,7 @@ The module's `OUT` signal is also exposed through the live device endpoint:
 curl http://crowdcontroller.local/api/status
 ```
 
-The response includes `presence`, `distance_mm`, and the configured OSC address.
+The response includes `presence`, `activity`, `distance_mm`, and the configured OSC address. `activity` is a `0.0–1.0` value made from the two strongest movement-energy gates, with faster attack and slower release smoothing. This same activity value is sent to the configured OSC address.
 
 ## Bill of materials
 
@@ -54,6 +54,7 @@ No separate 5 V supply is required for the bench build when USB powers the ESP32
 
 ## Current limitations
 
-- The LD2410C reports binary presence through `OUT`; the API does not expose a precise measured target distance.
+- The LD2410C reports binary presence through `OUT`; the API does not expose a precise measured target distance. Engineering mode is enabled at startup so the UART includes movement-energy values for activity smoothing.
+- The OSC activity value is not a crowd count; it is smoothed movement energy from two distance gates.
 - Range selection is quantized to the sensor's supported distance gates.
 - The LD2410C does not provide target X/Y position.
