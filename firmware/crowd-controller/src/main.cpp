@@ -17,8 +17,9 @@ static constexpr int ENCODER_B_GPIO = 5;
 static constexpr int ENCODER_SW_GPIO = 6;
 static constexpr int RADAR_OUT_GPIO = 7;
 static constexpr int PRESENCE_LED_GPIO = 12;
-static constexpr int RADAR_RX_GPIO = 9;
-static constexpr int RADAR_TX_GPIO = 8;
+// The board headers labeled RX/TX are GPIO44/GPIO43 (UART0 RX/TX).
+static constexpr int RADAR_RX_GPIO = 44;
+static constexpr int RADAR_TX_GPIO = 43;
 static constexpr uint32_t RADAR_BAUD = 256000;
 static constexpr unsigned long TEST_PERIOD_MS = 1000;
 static char line_buffer[256];

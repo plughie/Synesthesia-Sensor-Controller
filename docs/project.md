@@ -173,7 +173,7 @@ Crowd-controller wiring plan:
 | Presence test LED | GPIO12 through a series resistor (optional) |
 | Status LED | GPIO48 |
 
-GPIO10 and GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic. The ESP32 uses GPIO9 as UART RX from the LD2410C TX pin and GPIO8 as UART TX to the LD2410C RX pin.
+GPIO8 through GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic. The ESP32 uses the board-labeled RX header (GPIO44) from the LD2410C TX pin and the board-labeled TX header (GPIO43) to the LD2410C RX pin.
 The onboard RGB LED uses the following status scheme. Values are expressed as `brightness,red,green,blue`:
 
 - unlocked with presence: `255,255,0,255` (full magenta, flashing);
