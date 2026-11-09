@@ -164,6 +164,18 @@ Planned sensors:
 - LD2410C mmWave presence/distance sensor;
 - rotary encoder with pushbutton for crowd-distance configuration.
 
+Crowd-controller wiring plan:
+
+| Function | ESP32-S3 Mini pin |
+| --- | --- |
+| Encoder A / B / switch | GPIO4 / GPIO5 / GPIO6 |
+| VL53L1X SDA / SCL | GPIO10 / GPIO11 |
+| LD2410C RX / TX connection | GPIO9 receives LD2410C TX; GPIO8 transmits to LD2410C RX |
+| LD2410C OUT (optional) | GPIO7 |
+| Status LED | GPIO48 |
+
+The VL53L1X is powered from 3V3. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic.
+
 The LD2410C can report target presence and distance gates/energies, but it does not provide lateral X/Y position of the nearest target. X/Y control would require a different sensor such as an LD2450/LD2461 or multiple sensors. The project currently accepts the no-X/Y design.
 
 Planned crowd behavior:
