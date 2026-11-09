@@ -158,29 +158,27 @@ Do not flash unrelated firmware to another connected board. Confirm the serial t
 
 The fresh crowd-controller board currently runs the preparation image in `firmware/crowd-controller/`. It advertises `crowdcontroller.local` after Wi-Fi is configured, uses the rotary encoder to select a 500–4000 mm threshold in 50 mm steps, and leaves VL53L1X/LD2410C inputs unassigned until wiring is confirmed.
 
-Planned sensors:
+Planned crowd sensor:
 
-- VL53L1X upward-facing time-of-flight distance sensor;
 - LD2410C mmWave presence/distance sensor;
-- rotary encoder with pushbutton for crowd-distance configuration.
+- rotary encoder with pushbutton for radar detection-range configuration.
 
 Crowd-controller wiring plan:
 
 | Function | ESP32-S3 Mini pin |
 | --- | --- |
 | Encoder A / B / switch | GPIO4 / GPIO5 / GPIO6 |
-| VL53L1X SDA / SCL | GPIO10 / GPIO11 |
 | LD2410C RX / TX connection | GPIO9 receives LD2410C TX; GPIO8 transmits to LD2410C RX |
 | LD2410C OUT (optional) | GPIO7 |
 | Status LED | GPIO48 |
 
-The VL53L1X is powered from 3V3. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic.
+GPIO10 and GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic.
 
 The LD2410C can report target presence and distance gates/energies, but it does not provide lateral X/Y position of the nearest target. X/Y control would require a different sensor such as an LD2450/LD2461 or multiple sensors. The project currently accepts the no-X/Y design.
 
 Planned crowd behavior:
 
-1. Rotary encoder adjusts the shared detection distance/threshold for both sensors.
+1. Rotary encoder adjusts the LD2410C detection distance/threshold.
 2. Pushbutton can lock the configured distance during a performance.
 3. Sensor events are converted to a configurable OSC value.
 4. The OSC address can be changed per scene without reflashing.
@@ -189,7 +187,6 @@ Planned crowd behavior:
 Not yet complete:
 
 - confirm LD2410C UART pins and wiring;
-- confirm VL53L1X I2C pins and wiring;
 - implement crowd firmware and distance calibration;
 - decide whether crowd detection should emit binary presence, distance, or a smoothed normalized value;
 - test scene changes and long-running Wi-Fi behavior with sensors attached.
