@@ -178,11 +178,15 @@ static float crowd_normalized() {
   return (crowd_distance_mm - 500.0f) / 3500.0f;
 }
 
-static void set_indicator(float distance_mm, bool enabled) {
-  const float normalized = (distance_mm - 500.0f) / 3500.0f;
-  const uint8_t red = (uint8_t)(255.0f * (1.0f - normalized));
-  const uint8_t green = (uint8_t)(255.0f * normalized);
-  neopixelWrite(STATUS_LED_GPIO, enabled ? red : 0, enabled ? green : 0, 0);
+static void set_indicator_rgb(uint8_t brightness, uint8_t red, uint8_t green, uint8_t blue, bool enabled) {
+  if (!enabled) {
+    red = green = blue = 0;
+  } else if (brightness != 255) {
+    red = (uint8_t)((red * brightness) / 255);
+    green = (uint8_t)((green * brightness) / 255);
+    blue = (uint8_t)((blue * brightness) / 255);
+  }
+  neopixelWrite(STATUS_LED_GPIO, red, green, blue);
 }
 
 static void refresh_indicator() {
@@ -193,7 +197,16 @@ static void refresh_indicator() {
     last_indicator_ms = now;
     indicator_output_on = !indicator_output_on;
   }
-  set_indicator(crowd_distance_mm, indicator_output_on);
+  if (locked) {
+    // Locked: bright=25, red=255, green=0, blue=0.
+    set_indicator_rgb(25, 255, 0, 0, true);
+  } else if (last_presence) {
+    // Unlocked + presence: bright=255, red=255, green=0, blue=255.
+    set_indicator_rgb(255, 255, 0, 255, indicator_output_on);
+  } else {
+    // Unlocked + no presence: bright=255, red=0, green=0, blue=255.
+    set_indicator_rgb(255, 0, 0, 255, indicator_output_on);
+  }
 }
 
 static void emit_crowd_config() {
@@ -201,7 +214,7 @@ static void emit_crowd_config() {
   if (crowd_distance_mm > 4000) crowd_distance_mm = 4000;
   const float normalized = crowd_normalized();
   Serial.printf("{\"type\":\"crowd_config\",\"distance_mm\":%.1f,\"normalized\":%.6f}\n", crowd_distance_mm, normalized);
-  set_indicator(crowd_distance_mm, indicator_output_on);
+  refresh_indicator();
   send_osc(normalized);
 }
 
@@ -229,7 +242,7 @@ static void poll_button() {
       locked = !locked;
       indicator_output_on = true;
       last_indicator_ms = millis();
-      set_indicator(crowd_distance_mm, indicator_output_on);
+      refresh_indicator();
       send_lock();
     }
   }
@@ -238,15 +251,11 @@ static void poll_button() {
 static void poll_presence() {
   const bool present = digitalRead(RADAR_OUT_GPIO) == HIGH;
   digitalWrite(PRESENCE_LED_GPIO, present ? HIGH : LOW);
-  if (present) {
-    neopixelWrite(STATUS_LED_GPIO, 255, 0, 0);
-  } else {
-    refresh_indicator();
-  }
   if (present != last_presence) {
     last_presence = present;
     Serial.printf("{\"type\":\"presence\",\"present\":%s}\n", present ? "true" : "false");
   }
+  refresh_indicator();
 }
 
 static void handle_line(const char *line) {

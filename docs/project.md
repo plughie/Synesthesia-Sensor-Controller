@@ -174,7 +174,13 @@ Crowd-controller wiring plan:
 | Status LED | GPIO48 |
 
 GPIO10 and GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic.
-When presence is detected, the onboard RGB LED is overridden to solid red. The optional GPIO12 LED mirrors that signal for bench testing.
+The onboard RGB LED uses the following status scheme. Values are expressed as `brightness,red,green,blue`:
+
+- unlocked with presence: `255,255,0,255` (full magenta, flashing);
+- unlocked without presence: `255,0,0,255` (full blue, flashing);
+- locked: `25,255,0,0` (dim red, steady).
+
+The optional GPIO12 LED mirrors the presence signal for bench testing.
 
 The LD2410C can report target presence and distance gates/energies, but it does not provide lateral X/Y position of the nearest target. X/Y control would require a different sensor such as an LD2450/LD2461 or multiple sensors. The project currently accepts the no-X/Y design.
 
