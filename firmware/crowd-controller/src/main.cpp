@@ -238,6 +238,11 @@ static void poll_button() {
 static void poll_presence() {
   const bool present = digitalRead(RADAR_OUT_GPIO) == HIGH;
   digitalWrite(PRESENCE_LED_GPIO, present ? HIGH : LOW);
+  if (present) {
+    neopixelWrite(STATUS_LED_GPIO, 255, 0, 0);
+  } else {
+    refresh_indicator();
+  }
   if (present != last_presence) {
     last_presence = present;
     Serial.printf("{\"type\":\"presence\",\"present\":%s}\n", present ? "true" : "false");

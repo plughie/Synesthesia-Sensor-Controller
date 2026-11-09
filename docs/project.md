@@ -170,10 +170,11 @@ Crowd-controller wiring plan:
 | Encoder A / B / switch | GPIO4 / GPIO5 / GPIO6 |
 | LD2410C RX / TX connection | GPIO9 receives LD2410C TX; GPIO8 transmits to LD2410C RX |
 | LD2410C OUT | GPIO7 input |
-| Presence test LED | GPIO12 through a series resistor |
+| Presence test LED | GPIO12 through a series resistor (optional) |
 | Status LED | GPIO48 |
 
 GPIO10 and GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic.
+When presence is detected, the onboard RGB LED is overridden to solid red. The optional GPIO12 LED mirrors that signal for bench testing.
 
 The LD2410C can report target presence and distance gates/energies, but it does not provide lateral X/Y position of the nearest target. X/Y control would require a different sensor such as an LD2450/LD2461 or multiple sensors. The project currently accepts the no-X/Y design.
 
