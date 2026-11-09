@@ -175,7 +175,7 @@ static void handle_osc_http() {
 }
 
 static void handle_status_http() {
-  String body = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"ssid\":\"" + wifi_ssid + "\",\"osc_address\":\"" + osc_address + "\",\"distance_mm\":" + String(crowd_distance_mm, 1) + "}";
+  String body = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"ssid\":\"" + wifi_ssid + "\",\"osc_address\":\"" + osc_address + "\",\"distance_mm\":" + String(crowd_distance_mm, 1) + ",\"presence\":" + (last_presence ? "true" : "false") + "}";
   web_server.send(200, "application/json", body);
 }
 
