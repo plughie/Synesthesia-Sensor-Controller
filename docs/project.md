@@ -156,24 +156,24 @@ Do not flash unrelated firmware to another connected board. Confirm the serial t
 
 ## Crowd sensor plan
 
-The fresh crowd-controller board currently runs the preparation image in `firmware/crowd-controller/`. It advertises `crowdcontroller.local` after Wi-Fi is configured, uses the rotary encoder to select a 500–4000 mm threshold in 50 mm steps, and leaves VL53L1X/LD2410C inputs unassigned until wiring is confirmed.
+The crowd-controller board runs `firmware/crowd-controller/`. It advertises `crowdcontroller.local` after Wi-Fi is configured, uses the rotary encoder to select a 500–4000 mm range in 50 mm steps, and configures the LD2410C through its UART.
 
-Planned crowd sensor:
+Current crowd sensor:
 
 - LD2410C mmWave presence/distance sensor;
 - rotary encoder with pushbutton for radar detection-range configuration.
 
-Crowd-controller wiring plan:
+Crowd-controller wiring:
 
 | Function | ESP32-S3 Mini pin |
 | --- | --- |
 | Encoder A / B / switch | GPIO4 / GPIO5 / GPIO6 |
-| LD2410C RX / TX connection | GPIO9 receives LD2410C TX; GPIO8 transmits to LD2410C RX |
+| LD2410C RX / TX connection | Board RX/GPIO44 receives LD2410C TX; board TX/GPIO43 transmits to LD2410C RX |
 | LD2410C OUT | GPIO7 input |
 | Presence test LED | GPIO12 through a series resistor (optional) |
 | Status LED | GPIO48 |
 
-GPIO8 through GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic. The ESP32 uses the board-labeled RX header (GPIO44) from the LD2410C TX pin and the board-labeled TX header (GPIO43) to the LD2410C RX pin.
+GPIO8 through GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic. Do not connect the radar UART to both the labeled TX/RX pins and GPIO8/9.
 The onboard RGB LED uses the following status scheme. Values are expressed as `brightness,red,green,blue`:
 
 - unlocked with presence: `255,255,0,255` (full magenta, flashing);
@@ -184,20 +184,21 @@ The optional GPIO12 LED mirrors the presence signal for bench testing.
 
 The LD2410C can report target presence and distance gates/energies, but it does not provide lateral X/Y position of the nearest target. X/Y control would require a different sensor such as an LD2450/LD2461 or multiple sensors. The project currently accepts the no-X/Y design.
 
-Planned crowd behavior:
+Current crowd behavior:
 
 1. Rotary encoder adjusts the LD2410C maximum detection distance by sending its distance-gate configuration over UART.
 2. Pushbutton can lock the configured distance during a performance.
-3. Sensor events are converted to a configurable OSC value.
+3. Sensor presence is exposed through `/api/status` and the optional GPIO12 test LED.
 4. The OSC address can be changed per scene without reflashing.
-5. The future crowd device should advertise as `crowdcontroller.local`.
+5. The crowd device advertises as `crowdcontroller.local`.
 
 Not yet complete:
 
-- confirm LD2410C UART pins and wiring;
-- implement crowd firmware and distance calibration;
-- decide whether crowd detection should emit binary presence, distance, or a smoothed normalized value;
+- validate the range-gate mapping against the physical venue and sensor installation;
+- decide whether crowd detection should emit binary presence or a smoothed normalized value to Synesthesia;
 - test scene changes and long-running Wi-Fi behavior with sensors attached.
+
+See [`docs/wiring-and-bom.md`](wiring-and-bom.md) for the complete wiring table and bill of materials.
 
 ## Source files
 
