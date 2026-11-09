@@ -14,6 +14,8 @@ static constexpr int STATUS_LED_GPIO = 48;
 static constexpr int ENCODER_A_GPIO = 4;
 static constexpr int ENCODER_B_GPIO = 5;
 static constexpr int ENCODER_SW_GPIO = 6;
+static constexpr int RADAR_OUT_GPIO = 7;
+static constexpr int PRESENCE_LED_GPIO = 12;
 static constexpr unsigned long TEST_PERIOD_MS = 1000;
 static char line_buffer[256];
 static size_t line_length = 0;
@@ -38,6 +40,7 @@ static int encoder_accum = 0;
 static bool locked = false;
 static bool last_button = true;
 static unsigned long last_button_ms = 0;
+static bool last_presence = false;
 static unsigned long last_indicator_ms = 0;
 static bool indicator_output_on = true;
 
@@ -232,6 +235,15 @@ static void poll_button() {
   }
 }
 
+static void poll_presence() {
+  const bool present = digitalRead(RADAR_OUT_GPIO) == HIGH;
+  digitalWrite(PRESENCE_LED_GPIO, present ? HIGH : LOW);
+  if (present != last_presence) {
+    last_presence = present;
+    Serial.printf("{\"type\":\"presence\",\"present\":%s}\n", present ? "true" : "false");
+  }
+}
+
 static void handle_line(const char *line) {
   float value = 0;
   if (has(line, "\"type\":\"crowd_config\"")) {
@@ -264,6 +276,9 @@ void setup() {
   pinMode(ENCODER_A_GPIO, INPUT_PULLUP);
   pinMode(ENCODER_B_GPIO, INPUT_PULLUP);
   pinMode(ENCODER_SW_GPIO, INPUT_PULLUP);
+  pinMode(RADAR_OUT_GPIO, INPUT);
+  pinMode(PRESENCE_LED_GPIO, OUTPUT);
+  digitalWrite(PRESENCE_LED_GPIO, LOW);
   encoder_state = (digitalRead(ENCODER_A_GPIO) << 1) | digitalRead(ENCODER_B_GPIO);
   neopixelWrite(STATUS_LED_GPIO, 0, 0, 8);
   Serial.begin(115200);
@@ -293,6 +308,7 @@ void loop() {
   }
   poll_encoder();
   poll_button();
+  poll_presence();
   refresh_indicator();
   while (Serial.available()) {
     const char c = (char)Serial.read();

@@ -169,7 +169,8 @@ Crowd-controller wiring plan:
 | --- | --- |
 | Encoder A / B / switch | GPIO4 / GPIO5 / GPIO6 |
 | LD2410C RX / TX connection | GPIO9 receives LD2410C TX; GPIO8 transmits to LD2410C RX |
-| LD2410C OUT (optional) | GPIO7 |
+| LD2410C OUT | GPIO7 input |
+| Presence test LED | GPIO12 through a series resistor |
 | Status LED | GPIO48 |
 
 GPIO10 and GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic.
