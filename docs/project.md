@@ -2,14 +2,14 @@
 
 ## Status
 
-**Last documented:** 2026-11-07  
-**Status:** Hue controller operational; live Synesthesia OSC routing and Bonjour configuration verified. Crowd-sensor firmware is not yet implemented because the sensors have not arrived/been wired.
+**Last documented:** 2026-11-10
+**Status:** Hue controller operational with VL53L1X hand-distance hue control, live Synesthesia OSC routing, range adjustment, hue lock, and Bonjour configuration verified. Crowd-controller firmware remains a separate workstream.
 
 ## Purpose
 
-An ESP32-S3 controller for Synesthesia Pro. The current controller uses a rotary encoder to set the Synesthesia hue value and a pushbutton to lock/unlock the control. A Mac-hosted configurator/API sends values to Synesthesia over OSC and can reconfigure the destination address during a performance.
+An ESP32-S3 controller for Synesthesia Pro. The hue controller uses a VL53L1X time-of-flight sensor for hand-distance hue control, a rotary encoder to set the sensor operating range, and a pushbutton to lock/unlock the current hue. A Mac-hosted configurator/API sends values to Synesthesia over OSC and can reconfigure the destination address during a performance.
 
-The next stage is a separate crowd sensor using a VL53L1X time-of-flight sensor and an LD2410C mmWave sensor. Its rotary encoder will set the shared crowd-detection distance/threshold rather than directly changing the Synesthesia control value.
+The separate crowd controller uses an LD2410C mmWave sensor and its own rotary encoder to set the shared crowd-detection distance/threshold.
 
 ## Hardware identity and safety
 
@@ -34,10 +34,13 @@ The current rotary controller is wired as follows:
 | Encoder B | GPIO5 |
 | Encoder common/center | GND |
 | Encoder pushbutton | GPIO6 and GND |
+| VL53L1X SDA | GPIO10 |
+| VL53L1X SCL | GPIO11 |
+| VL53L1X VIN / GND | 3V3 / GND |
 | Onboard RGB status LED | GPIO48 |
 | External strip/sensor output | GPIO13 reserved and not driven by hue firmware |
 
-The encoder inputs and switch use internal pull-ups. Rotation changes hue in 0.02 increments on the 0.0–2.0 Synesthesia range. The pushbutton toggles the lock state. While locked, rotation does not change hue. The status LED tracks hue, with red at the low end and green at the high end.
+The encoder inputs and switch use internal pull-ups. Rotation adjusts the VL53L1X operating range from 500–4000 mm in 50 mm steps. The VL53L1X hand distance maps to the 0.0–2.0 Synesthesia hue range. The pushbutton toggles the hue lock; while locked, the current hue is held and the encoder can still adjust the sensor range. The status LED tracks hue, with red at the low end and green at the high end.
 
 ## Current OSC configuration
 
@@ -122,7 +125,8 @@ Project directory:
 
 The PlatformIO environment is `esp32-s3-test`, using the `esp32-s3-devkitc1-n4r2` board and Arduino framework. The firmware includes:
 
-- rotary hue control and lock switch;
+- VL53L1X hand-distance hue control;
+- rotary sensor-range control and hue lock switch;
 - GPIO48 hue feedback LED;
 - Wi-Fi credentials stored in ESP32 Preferences/NVS;
 - direct OSC UDP output;
@@ -135,9 +139,9 @@ The PlatformIO environment is `esp32-s3-test`, using the `esp32-s3-devkitc1-n4r2
 The deployed image was built from `src/main.cpp` and flashed to the intended controller serial port. It was verified by:
 
 - successful esptool write and hash verification;
-- `huecontroller.local` resolving to the controller's deployment IP;
-- successful ping;
-- HTTP status reporting a connected Wi-Fi network, deployment IP, and the configured OSC address.
+- HTTP status reporting a connected Wi-Fi network, deployment IP, sensor readiness, distance, range, and hue-lock state;
+- live hand-distance changes reflected in the onboard LED and Synesthesia hue;
+- pull-away behavior and hue locking verified during bench testing.
 
 ## Firmware flashing
 
@@ -168,12 +172,12 @@ Crowd-controller wiring:
 | Function | ESP32-S3 Mini pin |
 | --- | --- |
 | Encoder A / B / switch | GPIO4 / GPIO5 / GPIO6 |
-| LD2410C RX / TX connection | Board RX/GPIO44 receives LD2410C TX; board TX/GPIO43 transmits to LD2410C RX |
+| LD2410C RX / TX connection | Board-labeled RX (GPIO44) receives LD2410C TX; board-labeled TX (GPIO43) transmits to LD2410C RX |
 | LD2410C OUT | GPIO7 input |
 | Presence test LED | GPIO12 through a series resistor (optional) |
 | Status LED | GPIO48 |
 
-GPIO8 through GPIO11 are spare. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic. Do not connect the radar UART to both the labeled TX/RX pins and GPIO8/9.
+GPIO8 through GPIO13 remain available for expansion. The LD2410C is powered from 5V/VBUS, with a common ground; its UART signals are 3.3 V logic. Do not connect the radar UART to both the labeled TX/RX pins and GPIO8/9.
 The onboard RGB LED uses the following status scheme. Values are expressed as `brightness,red,green,blue`:
 
 - unlocked with presence: `255,255,0,255` (full magenta, flashing);
@@ -225,9 +229,8 @@ Before a performance:
 
 ## Known limitations
 
-- The current hue firmware is a bring-up/controller firmware, not the final VL53L1X gesture firmware.
 - The local API configuration is held in memory; the ESP32 persists its Wi-Fi and OSC settings in NVS.
 - The ESP32 uses the Mac LAN IP for OSC rather than relying on `.local` hostname resolution.
-- Crowd sensor wiring and UART/I2C pin assignments remain to be confirmed.
+- The crowd controller remains a separate device and its LD2410C engineering-mode path still needs further validation.
 
 

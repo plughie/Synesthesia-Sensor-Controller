@@ -14,6 +14,13 @@
 - [ ] Add calibration and smoothing controls.
 - [ ] Add hardware-in-the-loop tests once sensors are connected.
 
+## Hue controller
+
+- [x] Add VL53L1X hand-distance hue control.
+- [x] Use the rotary encoder for sensor-range adjustment.
+- [x] Use the pushbutton to lock/unlock the current hue.
+- [x] Verify pull-away behavior and live OSC output.
+
 ## OSC and scenes
 
 - [ ] Add a named scene-profile list to the configurator.

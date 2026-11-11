@@ -4,8 +4,9 @@ ESP32-S3 controller firmware and a small Python host bridge for live OSC control
 
 ## What works now
 
-- Rotary encoder hue control over the 0.0–2.0 Synesthesia hue range.
-- Pushbutton lock/unlock.
+- VL53L1X hand-distance control over the 0.0–2.0 Synesthesia hue range.
+- Rotary encoder sensor-range adjustment.
+- Pushbutton hue lock/unlock.
 - Onboard RGB LED feedback tied to hue.
 - Browser configurator with live slider updates.
 - Runtime OSC host, port, and address changes.

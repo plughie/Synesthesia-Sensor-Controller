@@ -17,7 +17,7 @@ static constexpr int ENCODER_B_GPIO = 5;
 static constexpr int ENCODER_SW_GPIO = 6;
 static constexpr int RADAR_OUT_GPIO = 7;
 static constexpr int PRESENCE_LED_GPIO = 12;
-// The board headers labeled RX/TX are GPIO44/GPIO43 (UART0 RX/TX).
+// Use the general-purpose header pins for the radar UART.
 static constexpr int RADAR_RX_GPIO = 44;
 static constexpr int RADAR_TX_GPIO = 43;
 static constexpr uint32_t RADAR_BAUD = 256000;
@@ -53,6 +53,21 @@ static bool indicator_output_on = true;
 static unsigned long last_activity_osc_ms = 0;
 static uint8_t radar_frame[64];
 static size_t radar_frame_length = 0;
+static unsigned long radar_rx_bytes = 0;
+static unsigned long radar_tx_bytes = 0;
+static unsigned long radar_command_count = 0;
+static uint16_t radar_last_tx_length = 0;
+static unsigned long radar_data_frames = 0;
+static unsigned long radar_engineering_frames = 0;
+static uint8_t radar_peak_energy = 0;
+static uint8_t radar_second_peak_energy = 0;
+static unsigned long radar_valid_frames = 0;
+static uint16_t radar_last_payload_length = 0;
+static uint8_t radar_last_frame_type = 0;
+static uint8_t radar_last_frame_marker = 0;
+static unsigned long radar_ack_count = 0;
+static uint8_t radar_last_ack_command = 0;
+static uint16_t radar_last_ack_status = 0xFFFF;
 
 static bool has(const char *line, const char *needle) { return strstr(line, needle) != nullptr; }
 
@@ -121,10 +136,46 @@ static void send_osc_value(const String &address, float value) {
 static void send_osc(float normalized) { send_osc_value(osc_address, normalized); }
 
 static void radar_command(const uint8_t *data, size_t length) {
-  radar_serial.write(data, length);
+  const size_t written = radar_serial.write(data, length);
+  radar_tx_bytes += written;
+  radar_command_count++;
+  radar_last_tx_length = (uint16_t)length;
   radar_serial.flush();
-  delay(30);
-  while (radar_serial.available()) radar_serial.read();
+  uint8_t ack[32];
+  size_t ack_length = 0;
+  const unsigned long deadline = millis() + 250;
+  while (millis() < deadline) {
+    if (!radar_serial.available()) {
+      delay(1);
+      continue;
+    }
+    const uint8_t byte = (uint8_t)radar_serial.read();
+    if (ack_length == 0 && byte != 0xFD) continue;
+    if (ack_length >= sizeof(ack)) {
+      ack_length = 0;
+      continue;
+    }
+    ack[ack_length++] = byte;
+    if (ack_length == 4 && (ack[1] != 0xFC || ack[2] != 0xFB || ack[3] != 0xFA)) {
+      ack_length = 0;
+      continue;
+    }
+    if (ack_length < 6) continue;
+    const size_t expected = 6 + ack[4] + (ack[5] << 8) + 4;
+    if (expected > sizeof(ack) || expected < 10) {
+      ack_length = 0;
+      continue;
+    }
+    if (ack_length < expected) continue;
+    if (ack[expected - 4] == 0x04 && ack[expected - 3] == 0x03 &&
+        ack[expected - 2] == 0x02 && ack[expected - 1] == 0x01) {
+      radar_ack_count++;
+      radar_last_ack_command = ack[6];
+      radar_last_ack_status = ack[8] | (ack[9] << 8);
+      return;
+    }
+    ack_length = 0;
+  }
 }
 
 static uint8_t radar_gate_for_distance(float distance_mm) {
@@ -174,6 +225,8 @@ static void update_activity(const uint8_t *frame) {
       second_strongest = energy;
     }
   }
+  radar_peak_energy = strongest;
+  radar_second_peak_energy = second_strongest;
   const float target = ((float)strongest + (float)second_strongest) / 200.0f;
   const float smoothing = target > smoothed_activity ? 0.25f : 0.08f;
   smoothed_activity += smoothing * (target - smoothed_activity);
@@ -187,6 +240,7 @@ static void update_activity(const uint8_t *frame) {
 static void poll_radar_data() {
   while (radar_serial.available()) {
     const uint8_t byte = (uint8_t)radar_serial.read();
+    radar_rx_bytes++;
     if (radar_frame_length == 0 && byte != 0xF4) continue;
     if (radar_frame_length >= sizeof(radar_frame)) {
       radar_frame_length = 0;
@@ -205,9 +259,16 @@ static void poll_radar_data() {
     }
     if (radar_frame_length < expected) continue;
     if (radar_frame[expected - 4] == 0xF8 && radar_frame[expected - 3] == 0xF7 &&
-        radar_frame[expected - 2] == 0xF6 && radar_frame[expected - 1] == 0xF5 &&
-        radar_frame[6] == 0x01 && radar_frame[7] == 0xAA) {
-      update_activity(radar_frame);
+        radar_frame[expected - 2] == 0xF6 && radar_frame[expected - 1] == 0xF5) {
+      radar_valid_frames++;
+      radar_last_payload_length = radar_frame[4] | (radar_frame[5] << 8);
+      radar_last_frame_type = radar_frame[6];
+      radar_last_frame_marker = radar_frame[7];
+      if (radar_frame[6] == 0x01 && radar_frame[7] == 0xAA) {
+        radar_data_frames++;
+        radar_engineering_frames++;
+        update_activity(radar_frame);
+      }
     }
     radar_frame_length = 0;
   }
@@ -236,7 +297,7 @@ static void handle_osc_http() {
 }
 
 static void handle_status_http() {
-  String body = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"ssid\":\"" + wifi_ssid + "\",\"osc_address\":\"" + osc_address + "\",\"distance_mm\":" + String(crowd_distance_mm, 1) + ",\"presence\":" + (last_presence ? "true" : "false") + ",\"activity\":" + String(smoothed_activity, 4) + "}";
+  String body = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"ssid\":\"" + wifi_ssid + "\",\"osc_address\":\"" + osc_address + "\",\"distance_mm\":" + String(crowd_distance_mm, 1) + ",\"presence\":" + (last_presence ? "true" : "false") + ",\"activity\":" + String(smoothed_activity, 4) + ",\"radar_rx_bytes\":" + String(radar_rx_bytes) + ",\"radar_tx_bytes\":" + String(radar_tx_bytes) + ",\"radar_command_count\":" + String(radar_command_count) + ",\"radar_last_tx_length\":" + String(radar_last_tx_length) + ",\"radar_valid_frames\":" + String(radar_valid_frames) + ",\"radar_data_frames\":" + String(radar_data_frames) + ",\"radar_engineering_frames\":" + String(radar_engineering_frames) + ",\"radar_last_payload_length\":" + String(radar_last_payload_length) + ",\"radar_last_frame_type\":" + String(radar_last_frame_type) + ",\"radar_last_frame_marker\":" + String(radar_last_frame_marker) + ",\"radar_peak_energy\":" + String(radar_peak_energy) + ",\"radar_second_peak_energy\":" + String(radar_second_peak_energy) + ",\"radar_ack_count\":" + String(radar_ack_count) + ",\"radar_last_ack_command\":" + String(radar_last_ack_command) + ",\"radar_last_ack_status\":" + String(radar_last_ack_status) + "}";
   web_server.send(200, "application/json", body);
 }
 
@@ -399,8 +460,6 @@ void setup() {
   digitalWrite(PRESENCE_LED_GPIO, LOW);
   encoder_state = (digitalRead(ENCODER_A_GPIO) << 1) | digitalRead(ENCODER_B_GPIO);
   neopixelWrite(STATUS_LED_GPIO, 0, 0, 8);
-  delay(100);
-  apply_radar_range();
   Serial.begin(115200);
   preferences.begin("hue", false);
   wifi_ssid = preferences.getString("ssid", "");
@@ -409,7 +468,9 @@ void setup() {
   osc_port = preferences.getInt("osc_port", osc_port);
   osc_address = preferences.getString("osc_addr", osc_address);
   save_osc();
-  delay(500);
+  delay(1500);
+  apply_radar_range();
+  delay(100);
   Serial.println("{\"type\":\"hello\",\"device\":\"esp32-s3-crowd-prep\",\"sensors\":\"unassigned\",\"gpio48\":\"status\"}");
   connect_wifi();
   web_server.on("/api/osc", HTTP_POST, handle_osc_http);

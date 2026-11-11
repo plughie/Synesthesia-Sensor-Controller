@@ -1,5 +1,7 @@
 #include <Arduino.h>
+#include <Wire.h>
 #include <math.h>
+#include <VL53L1X.h>
 #include <Preferences.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
@@ -14,6 +16,11 @@ static constexpr int STATUS_LED_GPIO = 48;
 static constexpr int ENCODER_A_GPIO = 4;
 static constexpr int ENCODER_B_GPIO = 5;
 static constexpr int ENCODER_SW_GPIO = 6;
+static constexpr int SENSOR_SDA_GPIO = 10;
+static constexpr int SENSOR_SCL_GPIO = 11;
+static constexpr int SENSOR_MIN_RANGE_MM = 500;
+static constexpr int SENSOR_MAX_RANGE_MM = 4000;
+static constexpr int SENSOR_RANGE_STEP_MM = 50;
 static constexpr unsigned long TEST_PERIOD_MS = 1000;
 static char line_buffer[256];
 static size_t line_length = 0;
@@ -31,12 +38,19 @@ static String osc_address = "/controls/meta/hue";
 static WiFiUDP osc_udp;
 static IPAddress osc_ip;
 static WebServer web_server(80);
+static bool web_started = false;
 static unsigned long last_wifi_status_ms = 0;
 static int encoder_state = 0;
 static int encoder_accum = 0;
 static bool locked = false;
 static bool last_button = true;
 static unsigned long last_button_ms = 0;
+static VL53L1X distance_sensor;
+static bool sensor_ready = false;
+static uint8_t sensor_i2c_status = 0xFF;
+static int sensor_range_mm = 500;
+static uint16_t sensor_distance_mm = 0;
+static unsigned long last_sensor_ms = 0;
 
 static bool has(const char *line, const char *needle) { return strstr(line, needle) != nullptr; }
 
@@ -125,7 +139,7 @@ static void handle_osc_http() {
 }
 
 static void handle_status_http() {
-  String body = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"ssid\":\"" + wifi_ssid + "\",\"osc_address\":\"" + osc_address + "\"}";
+  String body = String("{\"ip\":\"") + WiFi.localIP().toString() + "\",\"ssid\":\"" + wifi_ssid + "\",\"osc_address\":\"" + osc_address + "\",\"hue_raw\":" + String(hue_raw, 4) + ",\"hue_locked\":" + (locked ? "true" : "false") + ",\"sensor_ready\":" + (sensor_ready ? "true" : "false") + ",\"sensor_i2c_status\":" + String(sensor_i2c_status) + ",\"sensor_distance_mm\":" + String(sensor_distance_mm) + ",\"sensor_range_mm\":" + String(sensor_range_mm) + "}";
   web_server.send(200, "application/json", body);
 }
 
@@ -160,6 +174,10 @@ static void configure_wifi(const char *line) {
   preferences.putString("secret", wifi_secret);
   WiFi.disconnect(true, true);
   connect_wifi();
+  if (WiFi.status() == WL_CONNECTED && !web_started) {
+    web_server.begin();
+    web_started = true;
+  }
 }
 
 static void set_indicator(float raw) {
@@ -168,10 +186,10 @@ static void set_indicator(float raw) {
   neopixelWrite(STATUS_LED_GPIO, red, green, 0);
 }
 
-static void emit_hue() {
+static void emit_hue(bool announce = true) {
   if (hue_raw < 0) hue_raw = 0;
   if (hue_raw > 2) hue_raw = 2;
-  Serial.printf("{\"type\":\"hue\",\"raw\":%.6f,\"normalized\":%.6f}\n", hue_raw, hue_raw / 2.0f);
+  if (announce) Serial.printf("{\"type\":\"hue\",\"raw\":%.6f,\"normalized\":%.6f}\n", hue_raw, hue_raw / 2.0f);
   set_indicator(hue_raw);
   send_osc(hue_raw / 2.0f);
 }
@@ -183,11 +201,11 @@ static void poll_encoder() {
   static const int8_t table[16] = {0, -1, 1, 0, 1, 0, 0, -1, -1, 0, 0, 1, 0, 1, -1, 0};
   encoder_accum += table[transition & 0x0f];
   encoder_state = current;
-  if (locked) return;
   if (encoder_accum >= 4 || encoder_accum <= -4) {
-    hue_raw += encoder_accum > 0 ? 0.02f : -0.02f;
+    sensor_range_mm += encoder_accum > 0 ? SENSOR_RANGE_STEP_MM : -SENSOR_RANGE_STEP_MM;
+    sensor_range_mm = constrain(sensor_range_mm, SENSOR_MIN_RANGE_MM, SENSOR_MAX_RANGE_MM);
     encoder_accum = 0;
-    emit_hue();
+    Serial.printf("{\"type\":\"sensor_range\",\"range_mm\":%d}\n", sensor_range_mm);
   }
 }
 
@@ -200,6 +218,20 @@ static void poll_button() {
       locked = !locked;
       send_lock();
     }
+  }
+}
+
+static void poll_distance_sensor() {
+  if (!sensor_ready || millis() - last_sensor_ms < 60) return;
+  last_sensor_ms = millis();
+  const uint16_t distance = distance_sensor.read();
+  if (distance_sensor.timeoutOccurred()) return;
+  sensor_distance_mm = distance;
+  if (distance == 0 || distance > (uint16_t)sensor_range_mm || locked) return;
+  const float next_hue = constrain((2.0f * (float)distance) / (float)sensor_range_mm, 0.0f, 2.0f);
+  if (fabsf(next_hue - hue_raw) >= 0.005f) {
+    hue_raw = next_hue;
+    emit_hue(false);
   }
 }
 
@@ -232,13 +264,26 @@ static void handle_line(const char *line) {
 }
 
 void setup() {
+  Serial.begin(115200);
   pinMode(STATUS_LED_GPIO, OUTPUT);
   pinMode(ENCODER_A_GPIO, INPUT_PULLUP);
   pinMode(ENCODER_B_GPIO, INPUT_PULLUP);
   pinMode(ENCODER_SW_GPIO, INPUT_PULLUP);
+  Wire.begin(SENSOR_SDA_GPIO, SENSOR_SCL_GPIO, 100000);
+  delay(10);
+  Wire.beginTransmission(0x29);
+  sensor_i2c_status = Wire.endTransmission();
+  if (sensor_i2c_status == 0) {
+    distance_sensor.setTimeout(500);
+    sensor_ready = distance_sensor.init();
+    if (sensor_ready) {
+      distance_sensor.setDistanceMode(VL53L1X::Long);
+      distance_sensor.setMeasurementTimingBudget(50000);
+      distance_sensor.startContinuous(60);
+    }
+  }
   encoder_state = (digitalRead(ENCODER_A_GPIO) << 1) | digitalRead(ENCODER_B_GPIO);
   neopixelWrite(STATUS_LED_GPIO, 0, 0, 8);
-  Serial.begin(115200);
   preferences.begin("hue", false);
   wifi_ssid = preferences.getString("ssid", "");
   wifi_secret = preferences.getString("secret", "");
@@ -247,21 +292,25 @@ void setup() {
   osc_address = preferences.getString("osc_addr", osc_address);
   save_osc();
   delay(500);
-  Serial.println("{\"type\":\"hello\",\"device\":\"esp32-s3-hue-test\",\"gpio13\":\"reserved\",\"gpio48\":\"status\"}");
+  Serial.printf("{\"type\":\"hello\",\"device\":\"esp32-s3-hue-vl53l1x\",\"sensor_ready\":%s,\"sda\":%d,\"scl\":%d}\n", sensor_ready ? "true" : "false", SENSOR_SDA_GPIO, SENSOR_SCL_GPIO);
   connect_wifi();
   web_server.on("/api/osc", HTTP_POST, handle_osc_http);
   web_server.on("/api/status", HTTP_GET, handle_status_http);
-  web_server.begin();
+  if (WiFi.status() == WL_CONNECTED) {
+    web_server.begin();
+    web_started = true;
+  }
 }
 
 void loop() {
-  web_server.handleClient();
+  if (web_started) web_server.handleClient();
   if (WiFi.status() == WL_CONNECTED && millis() - last_wifi_status_ms > 10000) {
     last_wifi_status_ms = millis();
     emit_wifi_status("connected");
   }
   poll_encoder();
   poll_button();
+  poll_distance_sensor();
   while (Serial.available()) {
     const char c = (char)Serial.read();
     if (c == '\n' || c == '\r') {

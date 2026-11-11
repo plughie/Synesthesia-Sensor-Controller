@@ -1,24 +1,41 @@
-# Crowd Controller Wiring and Bill of Materials
+# Controller Wiring and Bill of Materials
+
+## Hue controller wiring
+
+The hue controller uses the VL53L1X for hand-distance control. The encoder sets the operating range; the pushbutton locks the current hue. The VL53L1X `INT` and `SHUT` pins are intentionally unused.
+
+| ESP32-S3 Mini | VL53L1X / encoder | Purpose |
+| --- | --- | --- |
+| 3V3 | VIN | Sensor power |
+| GND | GND / encoder common | Common ground |
+| GPIO10 | SDA | I²C data |
+| GPIO11 | SCL | I²C clock |
+| GPIO4 | Encoder A | Range control |
+| GPIO5 | Encoder B | Range control |
+| GPIO6 | Encoder switch to GND | Hue lock/unlock |
+| GPIO48 | Onboard RGB LED | Hue feedback |
+
+The firmware uses VL53L1X long-distance mode and a selectable 500–4000 mm operating range in 50 mm steps. A hand within the selected range maps to the Synesthesia hue value; a hand outside the range leaves the last hue unchanged. Configure the ESP32's OSC host as the Mac's LAN IP, not `127.0.0.1`.
 
 This is the current single-sensor crowd-controller build. Each DevKit has one LD2410C; the VL53L1X is not part of this controller.
 
 ## Wiring
 
-Use the ESP32-S3 Mini board headers labeled `TX` and `RX` for the radar UART. On this board variant, those headers are GPIO43 (TX) and GPIO44 (RX).
+Use the ESP32-S3 Mini board-labeled RX/TX pins for the radar UART.
 
 | ESP32-S3 Mini | LD2410C / accessory | Purpose |
 | --- | --- | --- |
 | 5V / VBUS | VCC | Radar power |
 | GND | GND | Common ground |
-| RX header / GPIO44 | TX | Radar serial data into ESP32 |
-| TX header / GPIO43 | RX | Radar serial data to sensor |
+| Board-labeled RX / GPIO44 | TX | Radar serial data into ESP32 |
+| Board-labeled TX / GPIO43 | RX | Radar serial data to sensor |
 | GPIO7 | OUT | Binary presence output |
 | GPIO4 | Encoder A | Rotary input |
 | GPIO5 | Encoder B | Rotary input |
 | GPIO6 | Encoder switch | Lock/unlock button, active low |
 | GPIO48 | Onboard RGB LED | Status indicator |
 
-The LD2410C serial signals are 3.3 V logic. Cross the UART connections: sensor TX goes to board RX, and sensor RX goes to board TX. Do not connect the radar to both the labeled UART pins and GPIO8/9.
+The LD2410C serial signals are 3.3 V logic. Cross the UART connections: sensor TX goes to board RX, and sensor RX goes to board TX. Do not connect the radar to both the board-labeled UART pins and GPIO8/9.
 
 The encoder selects the radar's maximum detection gate. The firmware starts at 500 mm, which maps to the LD2410C's lowest supported gate, and sends the range configuration over UART. The pushbutton locks the selected range.
 
